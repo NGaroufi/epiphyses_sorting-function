@@ -194,7 +194,11 @@ ep_sorting <- function(bone, algorithm, distance)
         
         suppressWarnings(pr_idx <- as.numeric(names(y[g,1])))
             
-        five_pr[i,] <-sample_ids[pr_idx]
+        if (length(five_pr[i,]) == length(sample_ids[pr_idx]))
+        {
+          five_pr[i,] <-sample_ids[pr_idx]
+        } else {five_pr[i,] <- c(sample_ids[pr_idx], 
+                                 rep(0, times=6-length(sample_ids[pr_idx])))}
         name <- c(name, rownames(y[-1,]))
         #five_pr_dis_20 <- cbind(five_pr_dis_20, name, y[,1])
             
@@ -288,7 +292,11 @@ ep_sorting <- function(bone, algorithm, distance)
         
         suppressWarnings(pr_idx <- as.numeric(names(y[g,1])))
             
-        five_pr[i,] <-sample_ids[pr_idx]
+        if (length(five_pr[i,]) == length(sample_ids[pr_idx]))
+        {
+          five_pr[i,] <-sample_ids[pr_idx]
+        } else {five_pr[i,] <- c(sample_ids[pr_idx], 
+                                 rep(0, times=6-length(sample_ids[pr_idx])))}
         name <- c(name, rownames(y[-1,]))
         #five_pr_dis_80 <- cbind(five_pr_dis_80, name, y[,1])
             
