@@ -52,18 +52,18 @@ ep_sorting <- function(bone, algorithm, distance)
       scale_cen <- scaleList$center
       scale_sc <- scaleList$scale
       
-      data[,1] <- (data[,1]-scaleList$scale[1]) / scaleList$center[1]
-      data[,2] <- (data[,2]-scaleList$scale[2]) / scaleList$center[2]
-      data[,3] <- (data[,3]-scaleList$scale[3]) / scaleList$center[3]
-      data[,4] <- (data[,4]-scaleList$scale[4]) / scaleList$center[4]
-      data[,5] <- (data[,5]-scaleList$scale[5]) / scaleList$center[5]
-      data[,6] <- (data[,6]-scaleList$scale[6]) / scaleList$center[6]
-      data[,7] <- (data[,7]-scaleList$scale[7]) / scaleList$center[7]
-      data[,8] <- (data[,8]-scaleList$scale[8]) / scaleList$center[8]
-      data[,9] <- (data[,9]-scaleList$scale[9]) / scaleList$center[9]
-      data[,10] <- (data[,10]-scaleList$scale[10]) / scaleList$center[10]
-      data[,11] <- (data[,11]-scaleList$scale[11]) / scaleList$center[11]
-      data[,12] <- (data[,12]-scaleList$scale[12]) / scaleList$center[12]
+      data[,1] <- (data[,1]-scaleList$center[1]) / scaleList$scale[1]
+      data[,2] <- (data[,2]-scaleList$center[2]) / scaleList$scale[2]
+      data[,3] <- (data[,3]-scaleList$center[3]) / scaleList$scale[3]
+      data[,4] <- (data[,4]-scaleList$center[4]) / scaleList$scale[4]
+      data[,5] <- (data[,5]-scaleList$center[5]) / scaleList$scale[5]
+      data[,6] <- (data[,6]-scaleList$center[6]) / scaleList$scale[6]
+      data[,7] <- (data[,7]-scaleList$center[7]) / scaleList$scale[7]
+      data[,8] <- (data[,8]-scaleList$center[8]) / scaleList$scale[8]
+      data[,9] <- (data[,9]-scaleList$center[9]) / scaleList$scale[9]
+      data[,10] <- (data[,10]-scaleList$center[10]) / scaleList$scale[10]
+      data[,11] <- (data[,11]-scaleList$center[11]) / scaleList$scale[11]
+      data[,12] <- (data[,12]-scaleList$center[12]) / scaleList$scale[12]
       
       class_20 <- readRDS(paste0("./files/", bone, "_20_LR.rds")) ## model for the 20% vars
       pred_20 <- predict(class_20, newdata = data[, c(7:12)])
