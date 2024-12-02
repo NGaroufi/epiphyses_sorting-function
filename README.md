@@ -18,9 +18,9 @@ The three inputs the `ep_sorting` requires are:
 3. distance: "euclidean", "maximum", "manhattan", "canberra", or "minkowski" (the default p for minkowski is 1.5)
 
 This will open a window of the working directory, where the user can choose the CSV file containing the measurements. The function will then display a message reporting the number of samples from the data file. The results of the analysis are saved in .csv files:
-1. regarding the 5 top predictions for each sample when utilizing only the predictions from the 20%, 80%, and the 20%-80% combination
+1. regarding the 5 top predictions for each sample when utilizing only the predictions from the 20% and the 80% cross-sections
 2. regarding the sample statistics (sample size, definite matches, number of excluded pairs, True Negative Rate, number of false negatives)
 3. regarding the sorted pairs (definite matches)
 4. regarding the plausible pairs
 
-A testing dataset for each long bone is provided as a use case.
+A testing dataset for each long bone is provided as a use case. The current version utilizes the 20% and 80% cross-sections as stand-alones, which is closer to an archeological case of fragmented bones.
