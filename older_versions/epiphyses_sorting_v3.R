@@ -1,0 +1,638 @@
+## Copyright (C) 2023 Nefeli Garoufi <nefeligar@biol.uoa.gr>
+
+
+# Package installing and library loading
+list.of.packages <- c("readr", "caret", "e1071", "Metrics", "dplyr")
+#install.packages(list.of.packages, quiet = TRUE)
+
+suppressMessages(suppressWarnings(invisible(sapply(list.of.packages, require, 
+                                                   character.only = TRUE))))
+
+#ep_sorting <- function(bone, algorithm, distance)
+ep_sorting <- function(bone, distance, ground_truth = FALSE)
+{
+  # Setting working director
+  setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+  
+  if (ground_truth == TRUE)
+    
+  {
+    # Data loading and prep
+    data <- read.csv(file.choose(new=TRUE))
+    data <- data[, c(1,8:11, 13:14,40:43, 45:46)]
+  
+  
+    # Welcoming message
+    print("Hello!")
+    print(paste0("You are working with ", nrow(data), " ", bone, " bones."))
+    # Functions needed
+    which.mins <- function(x, mins=6) {
+      head(order(x), mins)
+    }
+  
+  
+  # Dataset prep
+  sample_ids <- data[,1]
+  data <- data[,-1]
+  
+  y <- c(1,2,3,4,6,7)
+  x <- c(1,2,3,4,6,7)
+  
+  for (i in 1:6)
+  {
+    colnames(data)[i] <- paste0("Y",y[i])
+    colnames(data)[i+6] <- paste0("X",x[i])
+  }
+  
+  remove(x,y)
+  
+  unsc_data <- data
+  
+  # Algorithm start
+  
+        class_20 <- readRDS(paste0("./files/", bone, "_20_SVM.rds"))
+        vars <- c("Y1", "Y2", "Y3", "Y4", "Y6", "Y7")
+        predY <- 0
+        for (i in 1:6)
+        {
+          mlm1 <- class_20[[i]]
+          
+          pred <- predict(mlm1, newdata = data[, c(7:12)])
+          predY <- cbind(predY, pred)
+        }
+        
+        pred_20 <- predY[,-1]
+        colnames(pred_20) <- vars
+        
+        remove(predY, vars)
+        
+        # Predicting the 80% variables
+        class_80 <- readRDS(paste0("./files/", bone, "_80_SVM.rds"))
+        vars <- c("X1", "X2", "X3", "X4", "X6", "X7")
+        predY <- 0
+        for (i in 1:6)
+        {
+          mlm2 <- class_80[[i]]
+          
+          pred <- predict(mlm2, newdata = data[, c(1:6)])
+          predY <- cbind(predY, pred)
+        }
+        
+        pred_80 <- predY[,-1]
+        colnames(pred_80) <- vars
+        
+  
+  # Loading the thresholds
+  thresholds <- read.csv(paste0("./files/",bone, "_thr_SVM.csv"))
+  u_thr_20 <- as.numeric(thresholds[1,-1])
+  l_thr_20 <- as.numeric(thresholds[2,-1])
+  u_thr_80 <- as.numeric(thresholds[3,-1])
+  l_thr_80 <- as.numeric(thresholds[4,-1])
+    
+  #Sorting
+          
+  # 20% - Minimum five
+  pr_label<-0
+  pr_idx <-0
+  excluded <- 0
+  false_neg <- 0
+  
+  plausible <- matrix(0, nrow=nrow(data), ncol=nrow(data)-5)
+          
+  five_pr<-matrix(0, nrow=nrow(data), ncol=6)
+          
+  for (i in 1:nrow(data))
+      {
+        pr_sample <- 0
+        pr_mm <- 0
+        el <- 0
+        mism <- 0
+        fn <- 0
+        
+        dif_20 <- abs(sweep(unsc_data[,1:6], 2, pred_20[i,], FUN = "-"))
+        
+        for (k in 1:nrow(dif_20))
+        {
+          y_idx <-0
+          
+          for (j in 1:6)
+          {
+            if (between(dif_20[k,j], l_thr_20[j], u_thr_20[j]))
+            {
+              y_idx <- y_idx + 1
+            }
+          }
+          if (y_idx == 6)
+          {
+            pr_idx <- as.numeric(row.names(dif_20[k,]))
+            pr_sample[k] <- sample_ids[pr_idx]
+            el[k] <- k
+          } else { 
+            pr_idx_mm <- as.numeric(row.names(dif_20[k,]))
+            pr_mm[k] <- sample_ids[pr_idx_mm]
+            mism <- mism + 1
+          }
+        }
+        
+        p_id <- as.numeric(row.names(pred_20)[i])
+        
+        if (sample_ids[p_id] %in% pr_mm)
+        {
+          fn <- fn + 1
+          true_neg <- mism - 1
+        } else {true_neg <- mism}
+        
+        pr_sample <- pr_sample[!is.na(pr_sample)]
+        el <- el[!is.na(el)]
+        
+        el_pred_20 <- pred_20[el, ]
+        
+        true <- unsc_data[i, 1:6]
+        name <- rownames(true)
+        rownames(true) <- c("true")
+        
+        vec <- rbind(true, el_pred_20)
+        y <- as.matrix(dist(vec, method = distance, p=1.5))
+            
+        g <- which.mins(y[,1])
+        
+        excluded[i] <- true_neg
+        false_neg[i] <- fn
+        
+        plausible[i,] <- c(pr_sample[-g], 
+                           rep(0, times=ncol(plausible)-length(pr_sample[-g])))
+        
+        suppressWarnings(pr_idx <- as.numeric(names(y[g,1])))
+            
+        if (length(five_pr[i,]) == length(sample_ids[pr_idx]))
+        {
+          five_pr[i,] <-sample_ids[pr_idx]
+        } else {five_pr[i,] <- c(sample_ids[pr_idx], 
+                                 rep(0, times=6-length(sample_ids[pr_idx])))}
+        name <- c(name, rownames(y[-1,]))
+        #five_pr_dis_20 <- cbind(five_pr_dis_20, name, y[,1])
+            
+        remove(true, vec, y)
+      }
+       
+  stats <- c(nrow(data), sum(excluded),
+             sum(excluded)/(nrow(data)*(nrow(data)-1))*100, sum(false_neg))
+  names(stats) <- c("Sample size", "# of Excluded",
+                    "TNR", "# of False Negatives")
+  
+  write.csv(stats, paste0("stats_20_", distance , ".csv"))
+  
+  five_pr<-cbind(sample_ids, five_pr)
+          
+  five_pr <- five_pr[,-2]
+  colnames(five_pr)<-c("Observation #", "1st Choice", "2nd Choice", 
+                        "3rd Choice", "4th Choice", "5th Choice")
+          
+  five_pr_20 <- five_pr
+  write.csv(five_pr_20, paste0("20_pred_", distance , ".csv"))
+  
+  plausible <- cbind(sample_ids, plausible)
+  write.csv(plausible, paste0("plausible_20_", distance , ".csv"))
+  
+  # 80% - Minimum five
+  pr_label<-0
+  pr_idx <-0
+  excluded <-0
+  false_neg <- 0
+  
+  plausible <- matrix(0, nrow=nrow(data), ncol=nrow(data)-5)
+  
+  five_pr<-matrix(0, nrow=nrow(data), ncol=6)
+          
+  for (i in 1:nrow(data))
+      {
+        pr_sample <- 0
+        pr_mm <- 0
+        el <- 0
+        mism <- 0
+        fn <- 0
+        
+        dif_80 <- abs(sweep(unsc_data[,7:12], 2, pred_80[i,], FUN = "-"))
+        
+        for (k in 1:nrow(dif_80))
+        {
+          y_idx <-0
+          #print(k)
+          for (j in 1:6)
+          {
+            if (between(dif_80[k,j], l_thr_80[j], u_thr_80[j]))
+            {
+              y_idx <- y_idx + 1
+            }
+          }
+          if (y_idx == 6)
+          {
+            pr_idx <- as.numeric(row.names(dif_80[k,]))
+            pr_sample[k] <- sample_ids[pr_idx]
+            el[k] <- k
+          } else { 
+            pr_idx_mm <- as.numeric(row.names(dif_80[k,]))
+            pr_mm[k] <- sample_ids[pr_idx_mm]
+            mism <- mism + 1
+          }
+        }
+        
+        p_id <- as.numeric(row.names(pred_80)[i])
+        
+        if (sample_ids[p_id] %in% pr_mm)
+        {
+          fn <- fn + 1
+          true_neg <- mism - 1
+        } else {true_neg <- mism}
+        
+        pr_sample <- pr_sample[!is.na(pr_sample)]
+        el <- el[!is.na(el)]
+        
+        el_pred_80 <- pred_80[el, ]
+        
+        true <- unsc_data[i, 7:12]
+        name <- rownames(true)
+        rownames(true) <- c("true")
+        
+        vec <- rbind(true, el_pred_80)
+
+        y <- as.matrix(dist(vec, method = distance, p=1.5))
+            
+        g <- which.mins(y[,1])
+        
+        excluded[i] <- true_neg
+        false_neg[i] <- fn
+        
+        plausible[i,] <- c(pr_sample[-g], 
+                           rep(0, times=ncol(plausible)-length(pr_sample[-g])))
+        
+        suppressWarnings(pr_idx <- as.numeric(names(y[g,1])))
+            
+        if (length(five_pr[i,]) == length(sample_ids[pr_idx]))
+        {
+          five_pr[i,] <-sample_ids[pr_idx]
+        } else {five_pr[i,] <- c(sample_ids[pr_idx], 
+                                 rep(0, times=6-length(sample_ids[pr_idx])))}
+        name <- c(name, rownames(y[-1,]))
+            
+        remove(true, vec, y)
+      }
+  
+  stats <- c(nrow(data), sum(excluded),
+             sum(excluded)/(nrow(data)*(nrow(data)-1))*100, sum(false_neg))
+  names(stats) <- c("Sample size", "# of Excluded",
+                    "TNR", "# of False Negatives")
+  
+  write.csv(stats, paste0("stats_80_", distance , ".csv"))
+  
+  five_pr<-cbind(sample_ids, five_pr)
+          
+  five_pr <- five_pr[,-2]
+  colnames(five_pr)<-c("Observation #", "1st Choice", "2nd Choice", 
+                        "3rd Choice", "4th Choice", "5th Choice")
+          
+  five_pr_80 <- five_pr
+  write.csv(five_pr_80, paste0("80_pred_", distance , ".csv"))
+  
+  plausible <- cbind(sample_ids, plausible)
+  write.csv(plausible, paste0("plausible_80_", distance , ".csv"))
+  
+      
+  #Definite matches
+  def_m <- 0
+  sorted <- c("Sample ID", "Matching")
+  print("The most probable sorted pairs are:")
+  for (i in 1:nrow(five_pr_20))
+    {
+      if (five_pr_80[i,1] %in% five_pr_80[i,2:6]
+          & five_pr_20[i,1] %in% five_pr_20[i,2:6])
+      {
+        def_m <- def_m + 1
+        print(paste0(c(five_pr_20[i,1]), " and ",
+                       five_pr_20[i,(which(five_pr_20[i,1] == five_pr_20[i,2:6])) + 1]))
+        sorted <- rbind(sorted, five_pr_20[i,1],
+                          five_pr_20[i,(which(five_pr_20[i,1] == five_pr_20[i,2:6])) + 1][[1]])
+      }
+    }
+      
+  sorted <- unique(sorted)
+      
+  write.csv(sorted, paste0("sorted_", distance , ".csv"))
+  
+  } else if (ground_truth == FALSE)
+    
+  {
+    # Data loading and prep
+    #data_20 <- read.csv(file.choose(new=TRUE))
+    data_20 <- data_20[, -c(6,9)]
+    
+    #data_80 <- read.csv(file.choose(new=TRUE))
+    data_80 <- data_80[, -c(6,9)]
+    
+    
+    # Welcoming message
+    print("Hello!")
+    print(paste0("You are working with ", nrow(data_20), " upper epiphyses and ", 
+                  nrow(data_80), " lower epiphyses from the ", bone, " bone."))
+    
+    # Functions needed
+    which.mins <- function(x, mins=6) {
+      head(order(x), mins)
+    }
+    
+    # Dataset prep
+    sample_ids_20 <- data_20[,1]
+    sample_ids_80 <- data_80[,1]
+    
+    data_20 <- data_20[,-1]
+    data_80 <- data_80[,-1]
+    
+    y <- c(1,2,3,4,6,7)
+    x <- c(1,2,3,4,6,7)
+    
+    for (i in 1:6)
+    {
+      colnames(data_20)[i] <- paste0("Y",y[i])
+      colnames(data_80)[i] <- paste0("X",x[i])
+    }
+    
+    remove(x,y)
+    
+    unsc_data_20 <- data_20
+    unsc_data_80 <- data_80
+    
+    # Algorithm start
+    
+    class_20 <- readRDS(paste0("./files/", bone, "_20_SVM.rds"))
+    vars <- c("Y1", "Y2", "Y3", "Y4", "Y6", "Y7")
+    predY <- 0
+    for (i in 1:6)
+    {
+      mlm1 <- class_20[[i]]
+      
+      pred <- predict(mlm1, newdata = data_80)
+      predY <- cbind(predY, pred)
+    }
+    
+    pred_20 <- predY[,-1]
+    colnames(pred_20) <- vars
+    
+    remove(predY, vars)
+    
+    # Predicting the 80% variables
+    class_80 <- readRDS(paste0("./files/", bone, "_80_SVM.rds"))
+    vars <- c("X1", "X2", "X3", "X4", "X6", "X7")
+    predY <- 0
+    for (i in 1:6)
+    {
+      mlm2 <- class_80[[i]]
+      
+      pred <- predict(mlm2, newdata = data_20)
+      predY <- cbind(predY, pred)
+    }
+    
+    pred_80 <- predY[,-1]
+    colnames(pred_80) <- vars
+    
+    
+    # Loading the thresholds
+    thresholds <- read.csv(paste0("./files/",bone, "_thr_SVM.csv"))
+    u_thr_20 <- as.numeric(thresholds[1,-1])
+    l_thr_20 <- as.numeric(thresholds[2,-1])
+    u_thr_80 <- as.numeric(thresholds[3,-1])
+    l_thr_80 <- as.numeric(thresholds[4,-1])
+    
+    #Sorting
+    
+    # 20% - Minimum five
+    pr_label<-0
+    pr_idx <-0
+    excluded <- 0
+    #false_neg <- 0
+    
+    plausible <- matrix(0, nrow=nrow(data_20), ncol=nrow(data_20)-5)
+    
+    five_pr<-matrix(0, nrow=nrow(data_20), ncol=6)
+    
+    for (i in 1:nrow(data_20))
+    {
+      pr_sample <- 0
+      #pr_mm <- 0
+      el <- 0
+      mism <- 0
+      #fn <- 0
+      
+      dif_20 <- abs(sweep(unsc_data_20[,1:6], 2, pred_20[i,], FUN = "-"))
+      
+      for (k in 1:nrow(dif_20))
+      {
+        y_idx <-0
+        
+        for (j in 1:6)
+        {
+          if (between(dif_20[k,j], l_thr_20[j], u_thr_20[j]))
+          {
+            y_idx <- y_idx + 1
+          }
+        }
+        if (y_idx == 6)
+        {
+          pr_idx <- as.numeric(row.names(dif_20[k,]))
+          pr_sample[k] <- sample_ids_80[pr_idx]
+          el[k] <- k
+        } else { 
+          pr_idx_mm <- as.numeric(row.names(dif_20[k,]))
+          #pr_mm[k] <- sample_ids_80[pr_idx_mm]
+          mism <- mism + 1
+        }
+      }
+      
+      p_id <- as.numeric(row.names(pred_20)[i])
+      
+      # if (sample_ids[p_id] %in% pr_mm)
+      # {
+      #   fn <- fn + 1
+      #   true_neg <- mism - 1
+      # } else {true_neg <- mism}
+      
+      pr_sample <- pr_sample[!is.na(pr_sample)]
+      el <- el[!is.na(el)]
+      
+      el_pred_20 <- pred_20[el, ]
+      
+      true <- unsc_data_20[i, ]
+      name <- rownames(true)
+      rownames(true) <- c("true")
+      
+      vec <- rbind(true, el_pred_20)
+      y <- as.matrix(dist(vec, method = distance, p=1.5))
+      
+      g <- which.mins(y[,1])
+      
+      #excluded[i] <- true_neg
+      #false_neg[i] <- fn
+      excluded[i] <- mism
+      
+      plausible[i,] <- c(pr_sample[-g], 
+                         rep(0, times=ncol(plausible)-length(pr_sample[-g])))
+      
+      suppressWarnings(pr_idx <- as.numeric(names(y[g,1])))
+      
+      if (length(five_pr[i,]) == length(sample_ids_80[pr_idx]))
+      {
+        five_pr[i,] <-sample_ids_80[pr_idx]
+      } else {five_pr[i,] <- c(sample_ids_80[pr_idx], 
+                               rep(0, times=6-length(sample_ids_80[pr_idx])))}
+      
+      name <- c(name, rownames(y[-1,]))
+      #five_pr_dis_20 <- cbind(five_pr_dis_20, name, y[,1])
+      
+      remove(true, vec, y)
+    }
+    
+    stats <- c(nrow(data_20), sum(excluded))
+    names(stats) <- c("Sample size", "# of Excluded")
+    
+    write.csv(stats, paste0("stats_20_", distance , ".csv"))
+    
+    five_pr<-cbind(sample_ids_20, five_pr)
+    
+    five_pr <- five_pr[,-2]
+    colnames(five_pr)<-c("Observation #", "1st Choice", "2nd Choice", 
+                         "3rd Choice", "4th Choice", "5th Choice")
+    
+    five_pr_20 <- five_pr
+    write.csv(five_pr_20, paste0("20_pred_", distance , ".csv"))
+    
+    plausible <- cbind(sample_ids_20, plausible)
+    write.csv(plausible, paste0("plausible_20_", distance , ".csv"))
+    
+    # 80% - Minimum five
+    pr_label<-0
+    pr_idx <-0
+    excluded <-0
+    #false_neg <- 0
+    
+    plausible <- matrix(0, nrow=nrow(data_80), ncol=nrow(data_80)-5)
+    
+    five_pr<-matrix(0, nrow=nrow(data_80), ncol=6)
+    
+    for (i in 1:nrow(data_80))
+    {
+      pr_sample <- 0
+      #pr_mm <- 0
+      el <- 0
+      mism <- 0
+      #fn <- 0
+      
+      dif_80 <- abs(sweep(unsc_data_80[,1:6], 2, pred_80[i,], FUN = "-"))
+      
+      for (k in 1:nrow(dif_80))
+      {
+        y_idx <-0
+        #print(k)
+        for (j in 1:6)
+        {
+          if (between(dif_80[k,j], l_thr_80[j], u_thr_80[j]))
+          {
+            y_idx <- y_idx + 1
+          }
+        }
+        if (y_idx == 6)
+        {
+          pr_idx <- as.numeric(row.names(dif_80[k,]))
+          pr_sample[k] <- sample_ids_20[pr_idx]
+          el[k] <- k
+        } else { 
+          pr_idx_mm <- as.numeric(row.names(dif_80[k,]))
+          #pr_mm[k] <- sample_ids_20[pr_idx_mm]
+          mism <- mism + 1
+        }
+      }
+      
+      p_id <- as.numeric(row.names(pred_80)[i])
+      
+      # if (sample_ids[p_id] %in% pr_mm)
+      # {
+      #   fn <- fn + 1
+      #   true_neg <- mism - 1
+      # } else {true_neg <- mism}
+      
+      pr_sample <- pr_sample[!is.na(pr_sample)]
+      el <- el[!is.na(el)]
+      
+      el_pred_80 <- pred_80[el, ]
+      
+      true <- unsc_data_80[i, ]
+      name <- rownames(true)
+      rownames(true) <- c("true")
+      
+      vec <- rbind(true, el_pred_80)
+      
+      y <- as.matrix(dist(vec, method = distance, p=1.5))
+      
+      g <- which.mins(y[,1])
+      
+      # excluded[i] <- true_neg
+      # false_neg[i] <- fn
+      
+      excluded[i] <- mism
+      
+      plausible[i,] <- c(pr_sample[-g], 
+                         rep(0, times=ncol(plausible)-length(pr_sample[-g])))
+      
+      suppressWarnings(pr_idx <- as.numeric(names(y[g,1])))
+      
+      if (length(five_pr[i,]) == length(sample_ids_20[pr_idx]))
+      {
+        five_pr[i,] <-sample_ids_20[pr_idx]
+      } else {five_pr[i,] <- c(sample_ids_20[pr_idx], 
+                               rep(0, times=6-length(sample_ids_20[pr_idx])))}
+      name <- c(name, rownames(y[-1,]))
+      
+      remove(true, vec, y)
+    }
+    
+    stats <- c(nrow(data_80), sum(excluded))
+    names(stats) <- c("Sample size", "# of Excluded")
+    
+    write.csv(stats, paste0("stats_80_", distance , ".csv"))
+    
+    five_pr<-cbind(sample_ids_80, five_pr)
+    
+    five_pr <- five_pr[,-2]
+    colnames(five_pr)<-c("Observation #", "1st Choice", "2nd Choice", 
+                         "3rd Choice", "4th Choice", "5th Choice")
+    
+    five_pr_80 <- five_pr
+    write.csv(five_pr_80, paste0("80_pred_", distance , ".csv"))
+    
+    plausible <- cbind(sample_ids_80, plausible)
+    write.csv(plausible, paste0("plausible_80_", distance , ".csv"))
+    
+    
+    #Definite matches
+    def_m <- 0
+    sorted <- c("Sample ID", "Matching")
+    print("The most probable sorted pairs are:")
+    for (i in 1:nrow(five_pr_20))
+    {
+      if (five_pr_80[i,1] %in% five_pr_80[i,2:6]
+          & five_pr_20[i,1] %in% five_pr_20[i,2:6])
+      {
+        def_m <- def_m + 1
+        print(paste0(c(five_pr_20[i,1]), " and ",
+                     five_pr_20[i,(which(five_pr_20[i,1] == five_pr_20[i,2:6])) + 1]))
+        sorted <- rbind(sorted, five_pr_20[i,1],
+                        five_pr_20[i,(which(five_pr_20[i,1] == five_pr_20[i,2:6])) + 1][[1]])
+      }
+    }
+    
+    sorted <- unique(sorted)
+    
+    write.csv(sorted, paste0("sorted_", distance , ".csv"))
+  }
+  
+  return(sorted)
+}
+                 
